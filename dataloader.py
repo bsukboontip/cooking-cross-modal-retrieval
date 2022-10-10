@@ -20,7 +20,7 @@ def default_loader(path):
        
 class ImageLoader(data.Dataset):
     def __init__(self, img_path, transform=None, target_transform=None,
-                 loader=default_loader, square=False, data_path=None, partition=None, sem_reg=None):
+                 loader=default_loader, square=False, data_path=None, partition=None, sem_reg=None, clean_ingredients='', clean_layers=''):
 
         if data_path == None:
             raise Exception('No data path specified.')
@@ -49,16 +49,15 @@ class ImageLoader(data.Dataset):
         self.transform = transform
         self.target_transform = target_transform
         self.loader = loader
-
-        with open('../recipe1M_layers/cleaned_ingredients.json', 'r') as f:
+        
+        with open(clean_ingredients, 'r') as f:
             self.ingredients = json.load(f)
         
-        with open('../recipe1M_layers/cleaned_layers.json', 'r') as f:
+        with open(clean_layers, 'r') as f:
             self.recipes = json.load(f)
 
     def __getitem__(self, index):
         recipId = self.ids[index]
-        print(f"RECIPE ID: {recipId}")
         # we force 80 percent of them to be a mismatch
         if self.partition == 'train':
             match = np.random.uniform() > self.mismtch
@@ -168,22 +167,16 @@ def print_batch(input, target):
     print(f"TARGET: {target[0]}\n\nIMAGE ID: {target[1]}\n\nRECIPE ID: {target[2]}\n\n")
     print("\n\n-----------------------------------------------------------------------------------------------------------------------------------\n\n")
 
-data_loader = data.DataLoader(
-    ImageLoader(
-        '../val/',
-        transform=transforms.Compose([
-            transforms.CenterCrop(224),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-        ]),
-        data_path='../val',
-        partition='val'),
-    batch_size=1,
-    shuffle=False
-)
-
-for i, (input, target) in enumerate(data_loader):
-    print_batch(input, target)
-
-    if i == 10:
-        break
+# data_loader = data.DataLoader(
+#     ImageLoader(
+#         '../val/',
+#         transform=transforms.Compose([
+#             transforms.CenterCrop(224),
+#             transforms.ToTensor(),
+#             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+#         ]),
+#         data_path='../val',
+#         partition='val'),
+#     batch_size=2,
+#     shuffle=False
+# )
