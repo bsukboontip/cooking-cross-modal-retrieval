@@ -10,3 +10,4 @@
 Files can be found here: https://drive.google.com/drive/folders/14brtR12WlZ8fqvRttcv43wXkOfusSVUo?usp=sharing
 Link to Base Paper's GitHub page: https://github.com/torralba-lab/im2recipe-Pytorch
 Base paper link: http://pic2recipe.csail.mit.edu/
+BERT 
