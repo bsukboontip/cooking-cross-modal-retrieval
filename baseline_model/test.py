@@ -36,6 +36,7 @@ def main():
     model = im2recipe()
     model.visionMLP = torch.nn.DataParallel(model.visionMLP)
     model.to(device)
+    print(torch.cuda.get_device_name(0))
 
     # define loss function (criterion) and optimizer
     # cosine similarity between embeddings -> input1, input2, target
@@ -96,7 +97,7 @@ def test(test_loader, model, criterion):
         for j in range(len(input)):
             input_var.append(input[j].to(device))
         target_var = list()
-        for j in range(len(target)-2): # we do not consider the last two objects of the list
+        for j in range(len(target)-3): # we do not consider the last 3 objects of the list
             target_var.append(target[j].to(device))
 
         # compute output
@@ -128,13 +129,15 @@ def test(test_loader, model, criterion):
         if i==0:
             data0 = output[0].data.cpu().numpy()
             data1 = output[1].data.cpu().numpy()
-            data2 = target[-2]
-            data3 = target[-1]
+            data2 = target[-3]
+            data3 = target[-2]
+            data4 = target[-1]
         else:
             data0 = np.concatenate((data0,output[0].data.cpu().numpy()),axis=0)
             data1 = np.concatenate((data1,output[1].data.cpu().numpy()),axis=0)
-            data2 = np.concatenate((data2,target[-2]),axis=0)
-            data3 = np.concatenate((data3,target[-1]),axis=0)
+            data2 = np.concatenate((data2,target[-3]),axis=0)
+            data3 = np.concatenate((data3,target[-2]),axis=0)
+            data4 = np.concatenate((data4,target[-1]),axis=0)
 
     if opts.semantic_reg:
         print('* Test cosine loss {losses.avg:.4f}'.format(losses=cos_losses))
@@ -151,6 +154,8 @@ def test(test_loader, model, criterion):
         pickle.dump(data2, f)
     with open(opts.path_results+'rec_ids.pkl', 'wb') as f:
         pickle.dump(data3, f)
+    with open(opts.path_results+'img_name.pkl', 'wb') as f:
+        pickle.dump(data4, f)
 
     return cos_losses.avg
 

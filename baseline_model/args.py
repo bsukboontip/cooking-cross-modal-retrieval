@@ -8,12 +8,12 @@ def get_parser():
     parser.add_argument('--no-cuda', action='store_true')
 
     # data
-    parser.add_argument('--img_path', default='data/images/')
+    parser.add_argument('--img_path', default='data/test/')
     parser.add_argument('--data_path', default='data/')
-    parser.add_argument('--workers', default=8, type=int)
+    parser.add_argument('--workers', default=4, type=int)
 
     # model
-    parser.add_argument('--batch_size', default=160, type=int)
+    parser.add_argument('--batch_size', default=32, type=int)
     parser.add_argument('--snapshots', default='snapshots/',type=str)
 
     # im2recipe model
@@ -48,7 +48,7 @@ def get_parser():
     parser.add_argument('--resume', default='', type=str)
 
     # test
-    parser.add_argument('--path_results', default='../results/', type=str)
+    parser.add_argument('--path_results', default='results/', type=str)
     parser.add_argument('--model_path', default='snapshots/model_e220_v-4.700.pth.tar', type=str)
     parser.add_argument('--test_image_path', default='chicken.jpg', type=str)    
 
@@ -63,3 +63,7 @@ def get_parser():
     parser.add_argument('--sthdir', default = '../data/', type=str)
 
     return parser
+
+
+
+

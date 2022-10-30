@@ -7,6 +7,9 @@ import pickle
 import numpy as np
 import lmdb
 import torch
+import json
+
+from torchvision import transforms
 
 def default_loader(path):
     try:
@@ -134,6 +137,8 @@ class ImagerLoader(data.Dataset):
             img_class = sample['classes'] - 1
             img_id = self.ids[index]
 
+        # print(type(img_id), type(imgs[imgIdx]['id']))
+
         # output
         if self.partition == 'train':
             if self.semantic_reg:
@@ -142,7 +147,7 @@ class ImagerLoader(data.Dataset):
                 return [img, instrs, itr_ln, ingrs, igr_ln], [target]
         else:
             if self.semantic_reg:
-                return [img, instrs, itr_ln, ingrs, igr_ln], [target, img_class, rec_class, img_id, rec_id]
+                return [img, instrs, itr_ln, ingrs, igr_ln], [target, img_class, rec_class, img_id, rec_id, imgs[imgIdx]['id']]
             else:
                 return [img, instrs, itr_ln, ingrs, igr_ln], [target, img_id, rec_id]
 
