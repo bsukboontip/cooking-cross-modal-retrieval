@@ -6,6 +6,7 @@ import sys
 import json
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
+import pickle
 
 # 1. load the list of ingredients and appropriate class labels associated
 # 2. train pre-trained BERT classifier
@@ -13,10 +14,20 @@ from tqdm import tqdm
 
 class RecipeIngredientsDataset(Dataset):
 
-    def __init__(self, filename, cuisine_to_idx):
+    def __init__(self, filename, cuisine_to_idx, pickle_file=None):
         with open(filename, 'r') as f:
             data = json.load(f)
-            self.data = [{'recipe_id': k, 'ingredients': v} for k, v in data.items()]
+
+            # load the pickle file and load the labels into a set
+            if pickle_file:
+                print('STARTED LOADING FILE')
+                ids = set(pickle.load(open(pickle_file, 'rb')))
+                print('DONE LOADING FILE')
+                self.data = [{'recipe_id': k, 'ingredients': v} for k, v in data.items() if k in ids]
+            else:
+                self.data = [{'recipe_id': k, 'ingredients': v} for k, v in data.items()]
+
+            print(f"TOTAL DATA PROCESSED: {len(self.data)}")
             self.tokenizer = AutoTokenizer.from_pretrained(bert_model)
             
             self.cuisine_to_idx = cuisine_to_idx
@@ -83,15 +94,15 @@ class WeakLabels():
 
     def __init__(self, train_file, test_file):
         self.train_dataset = WeakLabelDataset(train_file)
+        self.device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     
     def train(self):
         self.train_dataloader = DataLoader(self.train_dataset, shuffle=True, batch_size=50, num_workers=4, drop_last=True)
         
-        self.device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
         self.model = AutoModelForSequenceClassification.from_pretrained(bert_model, num_labels=len(self.train_dataset.cuisine_to_idx))
 
-        optimizer = torch.optim.Adam(self.model.parameters(), lr=5e-5)
-        num_epochs = 2
+        optimizer = torch.optim.AdamW(self.model.parameters(), lr=5e-5)
+        num_epochs = 5
         num_training_steps = num_epochs * len(self.train_dataloader)
         lr_scheduler = get_scheduler(
             name='linear',
@@ -116,11 +127,13 @@ class WeakLabels():
 
                 progress_bar.update(1)
         
-        torch.save(self.model.state_dict(), 'latest_model_dict.pt')
-
+        torch.save(self.model.state_dict(), 'model_dict.pt')
 
     def curate_labels(self):
-        
+
+        self.model = AutoModelForSequenceClassification.from_pretrained(bert_model, num_labels=len(self.train_dataset.cuisine_to_idx))
+        self.model.load_state_dict(torch.load('model_dict.pt'))
+        self.model = self.model.to(self.device)
         self.model.eval()
 
         # create a smaller dataset class reading from the cleaned_ingredients JSON file
@@ -128,26 +141,28 @@ class WeakLabels():
         # obtain the outputs for each recipe and map it with the recipe ID
         # save it into a file with the recipe id with label
 
-        target_dataset = RecipeIngredientsDataset('../../recipe1M_layers/cleaned_ingredients.json', self.train_dataset.cuisine_to_idx)
-        target_dataloader = DataLoader(target_dataset, batch_size=1, shuffle=False)
+        target_dataset = RecipeIngredientsDataset(
+            '../../recipe1M_layers/cleaned_ingredients.json', 
+            self.train_dataset.cuisine_to_idx, 
+            pickle_file='../../test/test_keys.pkl')
+        target_dataloader = DataLoader(target_dataset, batch_size=200, shuffle=False)
         
         final_output = {}
-
-        for (item, recipe_id) in target_dataloader:
+        for (item, recipe_id) in tqdm(target_dataloader, total=len(target_dataloader)):
             item = {k: v.to(self.device) for k, v in item.items()}
             with torch.no_grad():
                 outputs = self.model(**item)
             logits = outputs.logits
             predictions = torch.argmax(logits, dim=-1)
 
-            print(f"PREDICTIONS: {predictions}, LEN: {predictions.shape}")
+            for recipe, prediction in zip(list(recipe_id), predictions.detach().cpu()):
+                final_output[recipe] = target_dataset.idx_to_cuisine[int(prediction)]
 
-            final_output[recipe_id] = target_dataset.idx_to_cuisine[int(predictions[0].detach().cpu())]
 
         json.dump(final_output, open('recipe-cuisine.json', 'w'))
 
 
 
-weakLabels = WeakLabels('train.json', '')
-weakLabels.train()
+weakLabels = WeakLabels('../../whats-cooking/train.json', '')
+# # weakLabels.train()
 weakLabels.curate_labels()
