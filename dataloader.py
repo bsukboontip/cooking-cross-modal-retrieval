@@ -17,7 +17,7 @@ def default_loader(path):
     except:
         print(..., file=sys.stderr)
         return Image.new('RGB', (224, 224), 'white')
-       
+
 class ImageLoader(data.Dataset):
     def __init__(self, img_path, transform=None, target_transform=None,
                  loader=default_loader, square=False, data_path=None, partition=None, sem_reg=None, clean_ingredients='', clean_layers=''):

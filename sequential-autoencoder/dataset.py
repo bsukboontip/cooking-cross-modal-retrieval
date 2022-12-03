@@ -10,13 +10,14 @@ import pickle
 import matplotlib.pyplot as plt
 from PIL import Image
 import time
+import re
 
 class RecipeDataset(torch.utils.data.Dataset):
 
     """
     Dataset class for loading the title, cleaned ingredients, instructions, list of images, ID for every recipe in the dataset, based on partition (train, validation, test)
     """
-    def __init__(self, partition, ids_pkl, cleaned_layers, image_map, dataset_images, image_logs='', transform=None):
+    def __init__(self, partition, ids_pkl, cleaned_layers, image_map, dataset_images, bert_embeddings, ingredient_vocabulary, image_logs='', transform=None, seed=42):
         
         self.partition = partition
         self.data = {}
@@ -24,12 +25,16 @@ class RecipeDataset(torch.utils.data.Dataset):
         self.image_logs = image_logs
         self.dataset_images = dataset_images
         self.transform = transform
+        self.seed = seed
+        self.bert_embeddings_path = bert_embeddings
+        self.ingredient_vocabulary_path = ingredient_vocabulary
 
         if self.partition not in ['train', 'val', 'test']:
             raise ValueError('Partition must be one of train, val, test')
         
         with open(cleaned_layers, 'r') as f:
             data = json.load(f)
+        print(f"Loaded {len(data)} recipes from {cleaned_layers}")
         
         with open(ids_pkl, 'rb') as f:
             self.ids = pickle.load(f)
@@ -46,6 +51,20 @@ class RecipeDataset(torch.utils.data.Dataset):
 
         with open(image_map, 'r') as f:
             self.image_map = json.load(f)
+        print(f"Loaded {len(self.image_map)} image mappings from {image_map}")
+
+        torch.random.manual_seed(self.seed)
+        np.random.seed(self.seed)
+        self.random_embedding = torch.randn(768).unsqueeze(0)
+        print('random embedding', self.random_embedding.shape)
+
+        with open(self.bert_embeddings_path, 'rb') as f:
+            self.bert_embeddings = pickle.load(f)
+            self.bert_embeddings = { k: torch.tensor(v).unsqueeze(0) for k, v in self.bert_embeddings.items() }
+        with open(self.ingredient_vocabulary_path, 'rb') as f:
+            self.ingredient_vocabulary = pickle.load(f)
+            
+        print(f"Loaded {len(self.bert_embeddings)} embeddings from {self.bert_embeddings_path}\nLoaded {len(self.ingredient_vocabulary['ingredients'])} ingredients from {self.ingredient_vocabulary_path}")
 
     def __len__(self):
         return len(self.data)
@@ -79,13 +98,52 @@ class RecipeDataset(torch.utils.data.Dataset):
         title = sample['title']
         ingredients = sample['ingredients']
         instructions = sample['instructions']
+
+        # obtain the embeddings for title, ingredients and instructions from BERT
+        # check against the dictionary saved, if not available, then use the random vector generated at the start
+
+        title_embedding = [self.bert_embeddings.get(word, self.random_embedding) for word in title.lower().split(' ')]
+
+        instruction_embedding = []
+        for instruction in instructions:
+            temp = []
+            instruction = re.sub(r"[^a-zA-Z0-9]", " ", instruction.strip().lower())
+            print(f"instruction: {instruction}")
+            for word in instruction.split():
+                e = self.bert_embeddings.get(word, self.random_embedding)
+                temp.append(e)
+            
+            instruction_embedding.append(torch.cat(temp, dim=0))
+
+        # ingredient embeddings contain an additional lookup in the ingredient vocabulary
+        ingredient_embedding = []
+        for ingredient in ingredients:
+            temp = []
+            ingredient = re.sub(r"[^a-zA-Z0-9]", " ", ingredient.strip().lower())
+            for word in ingredient.split(" "):
+                print(word)
+                temp.append(self.bert_embeddings.get(word, self.random_embedding))
+            
+            ingredient_embedding.append(torch.cat(temp, dim=0))
+
+        # convert the list of embeddings to a tensor, with zero padding to cover variable length
+        title_embedding = torch.nn.utils.rnn.pad_sequence(title_embedding, batch_first=True, padding_value=0)
+        instruction_embedding = torch.nn.utils.rnn.pad_sequence(instruction_embedding, batch_first=True, padding_value=0)
+        ingredient_embedding = torch.nn.utils.rnn.pad_sequence(ingredient_embedding, batch_first=True, padding_value=0)
+
+        print(f"TITLE EMBEDDING: {title_embedding.shape}")
+        print(f"INSTRUCTION EMBEDDING: {instruction_embedding.shape}")
+        print(f"INGREDIENT EMBEDDING: {ingredient_embedding.shape}")
         
         output = {
             'id': id,
             'image_id': image_id,
-            'title': title,
+            'title': title.squeeze(),
             'ingredients': ingredients,
             'instructions': instructions,
+            'title_embedding': title_embedding,
+            'ingredient_embedding': ingredient_embedding,
+            'instruction_embedding': instruction_embedding,
             'image': image
         }
 
@@ -111,16 +169,15 @@ class RecipeDataset(torch.utils.data.Dataset):
 
 if __name__ == "__main__":
     dataset = RecipeDataset(
-        'test', 
-        '/home/ubuntu/recipe-dataset/test/test_keys.pkl', 
-        '/home/ubuntu/recipe-dataset/json/cleaned_layers.json', 
-        '/home/ubuntu/recipe-dataset/json/image_map.json', 
-        '/home/ubuntu/recipe-dataset/test/', 
-        image_logs='/home/ubuntu/cooking-cross-modal-retrieval/sequential-autoencoder/logs',
+        partition='test',
+        ids_pkl='/home/ubuntu/recipe-dataset/test/test_keys.pkl', 
+        cleaned_layers='/home/ubuntu/recipe-dataset/json/cleaned_layers.json', 
+        image_map='/home/ubuntu/recipe-dataset/json/image_map.json', 
+        dataset_images='/home/ubuntu/recipe-dataset/test/', 
+        bert_embeddings='/home/ubuntu/recipe-dataset/json/vocab_bert.pkl',
+        ingredient_vocabulary='/home/ubuntu/recipe-dataset/json/ingredient_vocab.pkl',
+        image_logs='/home/ubuntu/cooking-cross-modal-retrieval/sequential-autoencoder/logs'
     )
     dataset.visualize_sample(2)
     print('\n-----------------------------------------------------------\n')
-    dataset.visualize_sample(4)
-    print('\n-----------------------------------------------------------\n')
-    dataset.visualize_sample(6)
-    print('\n-----------------------------------------------------------\n')
+    
