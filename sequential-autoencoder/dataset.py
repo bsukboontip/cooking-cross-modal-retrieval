@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 from PIL import Image
 import time
 import re
+import torchvision.transforms as transforms
 
 class RecipeDataset(torch.utils.data.Dataset):
 
@@ -38,7 +39,13 @@ class RecipeDataset(torch.utils.data.Dataset):
         
         with open(ids_pkl, 'rb') as f:
             self.ids = pickle.load(f)
-        
+        # remove bad ids from the ids list
+        remove_count = 0
+        for id in self.ids:
+            if id not in data or data[id]['partition'] != self.partition or data[id]['ingredients'] == [] or data[id]['instructions'] == []:
+                self.ids.remove(id)
+                remove_count += 1
+
         print(f"PARTITION: {self.partition}, TOTAL IDS AVAILABLE: {len(self.ids)}")
 
         # iterate through the data to obtain only samples which are from the partition
@@ -70,6 +77,7 @@ class RecipeDataset(torch.utils.data.Dataset):
         return len(self.data)
 
     def __getitem__(self, index):
+        print('INDEX CALLED:', index)
         id = self.ids[index]
         sample = self.data[id]
 
@@ -83,8 +91,6 @@ class RecipeDataset(torch.utils.data.Dataset):
 
         # create the image path and load the image
         image_path = self.dataset_images +'/'.join(list(image_id[:4])) + '/' + image_id
-        
-        print(f"IMAGE PATH: {image_path}")
 
         # load image from path
         try:
@@ -98,6 +104,7 @@ class RecipeDataset(torch.utils.data.Dataset):
         title = sample['title']
         ingredients = sample['ingredients']
         instructions = sample['instructions']
+        print(f"{title}\n{ingredients}\n{instructions}")
 
         # obtain the embeddings for title, ingredients and instructions from BERT
         # check against the dictionary saved, if not available, then use the random vector generated at the start
@@ -108,7 +115,7 @@ class RecipeDataset(torch.utils.data.Dataset):
         for instruction in instructions:
             temp = []
             instruction = re.sub(r"[^a-zA-Z0-9]", " ", instruction.strip().lower())
-            print(f"instruction: {instruction}")
+            # print(f"instruction: {instruction}")
             for word in instruction.split():
                 e = self.bert_embeddings.get(word, self.random_embedding)
                 temp.append(e)
@@ -121,7 +128,6 @@ class RecipeDataset(torch.utils.data.Dataset):
             temp = []
             ingredient = re.sub(r"[^a-zA-Z0-9]", " ", ingredient.strip().lower())
             for word in ingredient.split(" "):
-                print(word)
                 temp.append(self.bert_embeddings.get(word, self.random_embedding))
             
             ingredient_embedding.append(torch.cat(temp, dim=0))
@@ -131,17 +137,17 @@ class RecipeDataset(torch.utils.data.Dataset):
         instruction_embedding = torch.nn.utils.rnn.pad_sequence(instruction_embedding, batch_first=True, padding_value=0)
         ingredient_embedding = torch.nn.utils.rnn.pad_sequence(ingredient_embedding, batch_first=True, padding_value=0)
 
-        print(f"TITLE EMBEDDING: {title_embedding.shape}")
-        print(f"INSTRUCTION EMBEDDING: {instruction_embedding.shape}")
-        print(f"INGREDIENT EMBEDDING: {ingredient_embedding.shape}")
+        # print(f"TITLE EMBEDDING: {torch.squeeze(title_embedding).shape}")
+        # print(f"INSTRUCTION EMBEDDING: {instruction_embedding.shape}")
+        # print(f"INGREDIENT EMBEDDING: {ingredient_embedding.shape}")
         
         output = {
             'id': id,
             'image_id': image_id,
-            'title': title.squeeze(),
+            'title': title,
             'ingredients': ingredients,
             'instructions': instructions,
-            'title_embedding': title_embedding,
+            'title_embedding': torch.squeeze(title_embedding),
             'ingredient_embedding': ingredient_embedding,
             'instruction_embedding': instruction_embedding,
             'image': image
@@ -166,7 +172,6 @@ class RecipeDataset(torch.utils.data.Dataset):
             image = Image.open(image_path).convert('RGB')
             image.save(f"{self.image_logs}/{output['id']}.png")
 
-
 if __name__ == "__main__":
     dataset = RecipeDataset(
         partition='test',
@@ -176,8 +181,13 @@ if __name__ == "__main__":
         dataset_images='/home/ubuntu/recipe-dataset/test/', 
         bert_embeddings='/home/ubuntu/recipe-dataset/json/vocab_bert.pkl',
         ingredient_vocabulary='/home/ubuntu/recipe-dataset/json/ingredient_vocab.pkl',
-        image_logs='/home/ubuntu/cooking-cross-modal-retrieval/sequential-autoencoder/logs'
+        image_logs='/home/ubuntu/cooking-cross-modal-retrieval/sequential-autoencoder/logs',
+        transform=transforms.Compose([
+            transforms.Resize(256),
+            transforms.CenterCrop(224),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        ])
     )
     dataset.visualize_sample(2)
     print('\n-----------------------------------------------------------\n')
-    
