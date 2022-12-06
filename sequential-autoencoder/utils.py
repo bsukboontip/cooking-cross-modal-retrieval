@@ -107,6 +107,10 @@ def obtain_unique_ingredients(path_to_recipe, path_to_ingredient_vocab):
     
     # prune the ingredients to only contain ingredients that appear more than 10 times
     ingredients = {k:v for k,v in ingredients.items() if v >= 10}
+
+    # create a mapping from ingredient to index, and index to ingredient
+    ingredient2index = {ingredient: i for i, ingredient in enumerate(ingredients)}
+    index2ingredient = {v: k for k, v in ingredient2index.items()}
     stem2ingredient = {k:v for k,v in stem2ingredient.items() if k in ingredients}
     ingredient2stem = {k:v for k,v in ingredient2stem.items() if v in ingredients}
 
@@ -115,6 +119,10 @@ def obtain_unique_ingredients(path_to_recipe, path_to_ingredient_vocab):
         obj = {
             'ingredients': ingredients,
             'stem2ingredient': stem2ingredient,
-            'ingredient2stem': ingredient2stem
+            'ingredient2stem': ingredient2stem,
+            'ingredient2index': ingredient2index,
+            'index2ingredient': index2ingredient
         }
         pickle.dump(obj, f)
+
+obtain_unique_ingredients('/home/ubuntu/recipe-dataset/json/cleaned_ingredients.json', '/home/ubuntu/recipe-dataset/json/ingredient_vocab.pkl')

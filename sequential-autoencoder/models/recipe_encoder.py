@@ -3,8 +3,6 @@ import torch.nn as nn
 import numpy as np
 import os
 import sys
-from image_encoder import ImageEncoder
-from attention import AlternatingCoAttention
 
 
 """
@@ -81,6 +79,8 @@ class UnitaryTransformerEncoder(nn.Module):
         # TODO: Check if reverse transpose is needed
         x = x.transpose(0, 1)
 
+        x = AvgPoolSequence(torch.logical_not(mask), x)
+
         return x
 
 class RecipeTransformerEncoder(nn.Module):
@@ -121,47 +121,69 @@ class RecipeTransformerEncoder(nn.Module):
         # ------------------------------- Title -------------------------------
 
         # title : [batch_size, seq_len, embedding_dim]
-        mask = (title == 0)
         title_out = self.title_embedding(title)
-        # title : [batch_size, seq_len, hidden_dim]
-        title_out = self.title_encoder(title_out, mask=mask[:, :, :self.hidden_dim])
+        # transpose required for the transformer encoder
+        # title : [seq_len, batch_size, hidden_dim]
+        mask = (title_out == 0)[:, :, 0]
+        title_out = self.title_encoder(title_out, mask=mask)
 
         # ------------------------------- Ingredients -------------------------------
 
         # ingredients : [batch_size, num_ingredients, seq_len, embedding_dim]
         # convert to [batch_size * num_ingredients, seq_len, hidden_dim]
         batch_size, num_ingredients, seq_len, embedding_dim = ingredients.size()
-        ingredients_out = ingredients.view(batch_size*num_ingredients, ingredients.size(2), ingredients.size(3))
-        mask = (ingredients_out == 0)
-        mask[:, 0] = 0
+        ingredients_out = ingredients.contiguous().view(batch_size*num_ingredients, ingredients.size(2), ingredients.size(3))
+        # TODO: mask[:, 0] = 0, why is this required?
         ingredients_out = self.ingredient_embedding(ingredients_out)
-        # ingredients : [batch_size, num_ingredients, seq_len, hidden_dim]
-        ingredients_out = self.ingredient_encoder(ingredients_out, mask=mask[:, :, :self.hidden_dim])
+        # ingredients : [seq_len, batch_size*num_ingredients, hidden_dim]
+        mask = (ingredients_out == 0)[:, :, 0]
+        ingredients_out = self.ingredient_encoder(ingredients_out, mask=mask)
         # convert back to [batch_size, num_ingredients, output_dim]
-        ingredients_out = ingredients_out.view(batch_size, num_ingredients, ingredients_out.size(-1))
+        ingredients_out = ingredients_out.contiguous().view(batch_size, num_ingredients, ingredients_out.size(-1))
         # create new attention mask for the sequence of ingredients
         ingredients_mask = ingredients > 0
-        ingredients_mask = (ingredients_mask.sum(-1) > 0).bool()
+        ingredients_mask = (ingredients_mask.sum(-1) > 0).bool()[:, :, 0]
         # pass this through the next level encoder
         ingredients_out = self.ingredient_sequence_encoder(ingredients_out, mask=torch.logical_not(ingredients_mask))
 
         # ------------------------------- Instructions -------------------------------
 
         # instructions : [batch_size, num_instructions, seq_len, embedding_dim]
-        batch_size, num_instructions, seq_len, embedding_dim = ingredients.size()
-        instructions_out = instructions.view(batch_size*num_instructions, instructions.size(2), instructions.size(3))
-        mask = (instructions == 0)
-        mask[:, 0] = 0
+        batch_size, num_instructions, seq_len, embedding_dim = instructions.size()
+        instructions_out = instructions.contiguous().view(batch_size*num_instructions, instructions.size(2), instructions.size(3))
+        # mask[:, 0] = 0
         instructions_out = self.instruction_embedding(instructions_out)
         # instructions : [batch_size, num_instructions, seq_len, hidden_dim]
         # convert to [batch_size * num_instructions, seq_len, hidden_dim]
-        instructions_out = self.instruction_encoder(instructions_out, mask=mask[:, :, :self.hidden_dim])
+        mask = (instructions_out == 0)[:, :, 0]
+        instructions_out = self.instruction_encoder(instructions_out, mask=mask)
         # convert back to [batch_size, num_instructions, seq_len, hidden_dim]
-        instructions_out = instructions_out.view(batch_size, num_instructions, instructions_out.size(-1))
+        instructions_out = instructions_out.contiguous().view(batch_size, num_instructions, instructions_out.size(-1))
         # create new attention mask for the sequence of instructions
         instructions_mask = instructions > 0
-        instructions_mask = (instructions_mask.sum(-1) > 0).bool()
+        instructions_mask = (instructions_mask.sum(-1) > 0).bool()[:, :, 0]
         # pass this through the next level encoder
         instructions_out = self.instruction_sequence_encoder(instructions_out, mask=torch.logical_not(instructions_mask))
 
         return title_out, ingredients_out, instructions_out
+
+# from HT paper
+def AvgPoolSequence(attn_mask, feats, e=1e-12):
+    """ The function will average pool the input features 'feats' in
+        the second to rightmost dimension, taking into account
+        the provided mask 'attn_mask'.
+    Inputs:
+        attn_mask (torch.Tensor): [batch_size, ...x(N), 1] Mask indicating
+                                  relevant (1) and padded (0) positions.
+        feats (torch.Tensor): [batch_size, ...x(N), D] Input features.
+    Outputs:
+        feats (torch.Tensor) [batch_size, ...x(N-1), D] Output features
+    """
+
+    length = attn_mask.sum(-1)
+    # pool by word to get embeddings for a sequence of words
+    mask_words = attn_mask.float()*(1/(length.float().unsqueeze(-1).expand_as(attn_mask) + e))
+    feats = feats*mask_words.unsqueeze(-1).expand_as(feats)
+    feats = feats.sum(dim=-2)
+
+    return feats

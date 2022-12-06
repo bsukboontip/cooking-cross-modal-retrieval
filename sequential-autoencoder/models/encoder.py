@@ -2,9 +2,11 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from image_encoder import ImageEncoder
-from recipe_encoder import RecipeTransformerEncoder
-from attention import AlternatingCoAttention
+import sys
+
+from models.image_encoder import ImageEncoder
+from models.recipe_encoder import RecipeTransformerEncoder
+from models.attention import AlternatingCoAttention
 
 
 
@@ -27,7 +29,7 @@ class CombinedEncoder(nn.Module):
         self.pretrained = pretrained
 
         # create image encoder
-        self.image_encoder = ImageEncoder(model_type=self.model_type, embedding_dim=self.image_embedding_dim, pretrained=self.pretrained)
+        self.image_encoder = ImageEncoder(model_type=self.model_type, embedding_size=self.image_embedding_dim, pretrained=self.pretrained)
 
         # create recipe encoder
         self.recipe_encoder = RecipeTransformerEncoder(num_layers=self.num_layers, num_heads=self.num_heads, hidden_dim=self.hidden_dim, embedding_dim=self.embedding_dim)
@@ -38,13 +40,19 @@ class CombinedEncoder(nn.Module):
         self.image_ingredient_attention = AlternatingCoAttention(d=self.image_embedding_dim, k=self.embedding_dim)
 
         # use a final embedding layer post concatenation to bring output back to embedding_dim
-        self.text_embedding_layer = nn.Linear(self.embedding_dim*3, self.embedding_dim)
+        self.text_embedding_layer = nn.Linear(self.hidden_dim*3, self.hidden_dim)
 
     
     def forward(self, image, title, instructions, ingredients):
         image_embedding = self.image_encoder(image)
         
         title_embedding, ingredients_embedding, instructions_embedding = self.recipe_encoder(title, ingredients, instructions)
+
+
+        image_embedding = image_embedding.unsqueeze(1)
+        title_embedding = title_embedding.unsqueeze(1)
+        ingredients_embedding = ingredients_embedding.unsqueeze(1)
+        instructions_embedding = instructions_embedding.unsqueeze(1)
 
         # apply alternating co-attention to image and recipe embeddings
         title_embedding, image_embedding = self.image_title_attention(title_embedding, image_embedding)

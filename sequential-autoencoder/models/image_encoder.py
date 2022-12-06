@@ -28,7 +28,7 @@ class ImageEncoder(nn.Module):
             raise ValueError('Invalid model type: {}'.format(model_type))
 
 
-        print(model_type, "- TOTAL PARAMETERS:", sum(p.numel() for p in self.model.parameters() if p.requires_grad))
+        # print(model_type, "- TOTAL PARAMETERS:", sum(p.numel() for p in self.model.parameters() if p.requires_grad))
     
     def forward(self, x):
         x = self.model(x)
