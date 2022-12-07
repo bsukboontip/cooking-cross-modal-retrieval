@@ -71,7 +71,7 @@ class UnitaryTransformerEncoder(nn.Module):
 
     def forward(self, x, mask=None):
         # x = self.embedding(x)
-        x = self.positional_encoding(x)
+        # x = self.positional_encoding(x)
         
         # TODO: Check if transpose is needed
         x = x.transpose(0, 1)
@@ -115,7 +115,7 @@ class RecipeTransformerEncoder(nn.Module):
         ingredients: BERT embedding of the ingredients : [batch_size, num_ingredients, seq_len, embedding_dim]
         instructions: BERT embedding of the instructions : [batch_size, num_instructions, seq_len, embedding_dim]
     """
-    def forward(self, title, ingredients, instructions):
+    def forward(self, title, instructions, ingredients):
         batch_size = title.size(0)
 
         # ------------------------------- Title -------------------------------
@@ -132,14 +132,15 @@ class RecipeTransformerEncoder(nn.Module):
         # ingredients : [batch_size, num_ingredients, seq_len, embedding_dim]
         # convert to [batch_size * num_ingredients, seq_len, hidden_dim]
         batch_size, num_ingredients, seq_len, embedding_dim = ingredients.size()
-        ingredients_out = ingredients.contiguous().view(batch_size*num_ingredients, ingredients.size(2), ingredients.size(3))
+        ingredients_out = ingredients.view(batch_size*num_ingredients, ingredients.size(2), ingredients.size(3))
+        
         # TODO: mask[:, 0] = 0, why is this required?
         ingredients_out = self.ingredient_embedding(ingredients_out)
         # ingredients : [seq_len, batch_size*num_ingredients, hidden_dim]
         mask = (ingredients_out == 0)[:, :, 0]
         ingredients_out = self.ingredient_encoder(ingredients_out, mask=mask)
         # convert back to [batch_size, num_ingredients, output_dim]
-        ingredients_out = ingredients_out.contiguous().view(batch_size, num_ingredients, ingredients_out.size(-1))
+        ingredients_out = ingredients_out.view(batch_size, num_ingredients, ingredients_out.size(-1))
         # create new attention mask for the sequence of ingredients
         ingredients_mask = ingredients > 0
         ingredients_mask = (ingredients_mask.sum(-1) > 0).bool()[:, :, 0]
@@ -147,20 +148,18 @@ class RecipeTransformerEncoder(nn.Module):
         ingredients_out = self.ingredient_sequence_encoder(ingredients_out, mask=torch.logical_not(ingredients_mask))
 
         # ------------------------------- Instructions -------------------------------
-
         # instructions : [batch_size, num_instructions, seq_len, embedding_dim]
         batch_size, num_instructions, seq_len, embedding_dim = instructions.size()
-        instructions_out = instructions.contiguous().view(batch_size*num_instructions, instructions.size(2), instructions.size(3))
-        # mask[:, 0] = 0
+        instructions_mask = instructions > 0
+        instructions_out = instructions.view(batch_size*num_instructions, instructions.size(2), instructions.size(3))
         instructions_out = self.instruction_embedding(instructions_out)
         # instructions : [batch_size, num_instructions, seq_len, hidden_dim]
         # convert to [batch_size * num_instructions, seq_len, hidden_dim]
         mask = (instructions_out == 0)[:, :, 0]
         instructions_out = self.instruction_encoder(instructions_out, mask=mask)
         # convert back to [batch_size, num_instructions, seq_len, hidden_dim]
-        instructions_out = instructions_out.contiguous().view(batch_size, num_instructions, instructions_out.size(-1))
+        instructions_out = instructions_out.view(batch_size, num_instructions, instructions_out.size(-1))
         # create new attention mask for the sequence of instructions
-        instructions_mask = instructions > 0
         instructions_mask = (instructions_mask.sum(-1) > 0).bool()[:, :, 0]
         # pass this through the next level encoder
         instructions_out = self.instruction_sequence_encoder(instructions_out, mask=torch.logical_not(instructions_mask))

@@ -183,11 +183,15 @@ class RecipeDataset(torch.utils.data.Dataset):
             image = Image.open(image_path).convert('RGB')
             image.save(f"{self.image_logs}/{output['id']}.png")
 
-def collate(batch):
+def collate(batch, need_metadata=False):
     title_embeddings, ingredient_embeddings, instruction_embeddings, images = [], [], [], []
     ingredient_max_seq, ingredient_max_num, instruction_max_seq, instruction_max_num = 0, 0, 0, 0
     ingredient_lens = []
     ingredient_indexes = []
+
+    if need_metadata:
+        image_ids = []
+        titles = []
 
     for elem in batch:
         title_embeddings.append(elem['title_embedding'])
@@ -204,6 +208,11 @@ def collate(batch):
         images.append(elem['image'])
 
         ingredient_indexes.append(elem['ingredient_indexes'])
+
+        # additional metadata requirement: 'image_id', 'title'
+        if need_metadata:
+            image_ids.append(elem['image_id'])
+            titles.append(elem['title'])
     
     # title
     title_embeddings = torch.nn.utils.rnn.pad_sequence(title_embeddings, batch_first=True, padding_value=0)
@@ -222,11 +231,22 @@ def collate(batch):
         pad = padded_output_size - np.array(elem.shape)
         instruction_embeddings[i] = func.pad(elem, (0, pad[3], 0, pad[2], 0, pad[1], 0, pad[0]))
     instruction_embeddings = torch.cat(instruction_embeddings, dim=0)
-
+    
     # images
     images = torch.stack(images, dim=0)
     ingredient_indexes = torch.stack(ingredient_indexes, dim=0)
 
+    if need_metadata:
+        return {
+            'title_embeddings': title_embeddings,
+            'ingredient_embeddings': ingredient_embeddings,
+            'instruction_embeddings': instruction_embeddings,
+            'image_embeddings': images,
+            'ingredient_lens': torch.tensor(ingredient_lens),
+            'ingredient_indexes': ingredient_indexes,
+            'image_ids': image_ids,
+            'titles': titles
+        }    
     return {
         'title_embeddings': title_embeddings,
         'ingredient_embeddings': ingredient_embeddings,
@@ -236,22 +256,21 @@ def collate(batch):
         'ingredient_indexes': ingredient_indexes
     }
 
-if __name__ == "__main__":
-    dataset = RecipeDataset(
-        partition='test',
-        ids_pkl='/home/ubuntu/recipe-dataset/test/test_keys.pkl', 
-        cleaned_layers='/home/ubuntu/recipe-dataset/json/cleaned_layers.json', 
-        image_map='/home/ubuntu/recipe-dataset/json/image_map.json', 
-        dataset_images='/home/ubuntu/recipe-dataset/test/', 
-        bert_embeddings='/home/ubuntu/recipe-dataset/json/vocab_bert.pkl',
-        ingredient_vocabulary='/home/ubuntu/recipe-dataset/json/ingredient_vocab.pkl',
-        image_logs='/home/ubuntu/cooking-cross-modal-retrieval/sequential-autoencoder/logs',
-        transform=transforms.Compose([
-            transforms.Resize(256),
-            transforms.CenterCrop(224),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-        ])
-    )
-    dataset.visualize_sample(0)
-    print('\n-----------------------------------------------------------\n')
+# if __name__ == "__main__":
+#     dataset = RecipeDataset(
+#         partition='test',
+#         ids_pkl='/home/ubuntu/recipe-dataset/test/test_keys.pkl', 
+#         cleaned_layers='/home/ubuntu/recipe-dataset/json/cleaned_layers.json', 
+#         image_map='/home/ubuntu/recipe-dataset/json/image_map.json', 
+#         dataset_images='/home/ubuntu/recipe-dataset/test/', 
+#         bert_embeddings='/home/ubuntu/recipe-dataset/json/vocab_bert.pkl',
+#         ingredient_vocabulary='/home/ubuntu/recipe-dataset/json/ingredient_vocab.pkl',
+#         image_logs='/home/ubuntu/cooking-cross-modal-retrieval/sequential-autoencoder/logs',
+#         transform=transforms.Compose([
+#             transforms.Resize(256),
+#             transforms.CenterCrop(224),
+#             transforms.ToTensor(),
+#             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+#         ])
+#     )
+#     dataset.visualize_sample(0)

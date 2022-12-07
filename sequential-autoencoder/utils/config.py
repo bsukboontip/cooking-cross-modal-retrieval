@@ -13,7 +13,7 @@ def get_args():
     parser.add_argument('--batch_size', default=8, type=int)
     parser.add_argument('--lr', default=0.0001, type=float)
     parser.add_argument('--weight_decay', default=0.0001, type=float)
-    parser.add_argument('--num_workers', default=4, type=int)
+    parser.add_argument('--num_workers', default=1, type=int)
     parser.add_argument('--evaluate_freq', default=10, type=int)
     parser.add_argument('--save_freq', default=10, type=int)
     

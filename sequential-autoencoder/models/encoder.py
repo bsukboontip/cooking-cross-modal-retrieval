@@ -46,7 +46,7 @@ class CombinedEncoder(nn.Module):
     def forward(self, image, title, instructions, ingredients):
         image_embedding = self.image_encoder(image)
         
-        title_embedding, ingredients_embedding, instructions_embedding = self.recipe_encoder(title, ingredients, instructions)
+        title_embedding, ingredients_embedding, instructions_embedding = self.recipe_encoder(title, instructions, ingredients)
 
 
         image_embedding = image_embedding.unsqueeze(1)
