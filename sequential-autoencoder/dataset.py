@@ -62,7 +62,6 @@ class RecipeDataset(torch.utils.data.Dataset):
 
         with open(image_map, 'r') as f:
             self.image_map = json.load(f)
-        print(f"Loaded {len(self.image_map)} image mappings from {image_map}")
 
         torch.random.manual_seed(self.seed)
         np.random.seed(self.seed)
@@ -215,7 +214,14 @@ def collate(batch, need_metadata=False):
             titles.append(elem['title'])
     
     # title
+    for i, x in enumerate(title_embeddings):
+        if len(x.size()) == 1:
+            title_embeddings[i] = x[None, :]
+        # print(title_embeddings[i].size())
     title_embeddings = torch.nn.utils.rnn.pad_sequence(title_embeddings, batch_first=True, padding_value=0)
+    # print("done for:")
+    # for x in title_embeddings:
+    #     print(x.size())
 
     # ingredients
     padded_output_size = np.array([1, ingredient_max_num, ingredient_max_seq, 768])
