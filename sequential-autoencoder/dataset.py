@@ -62,6 +62,8 @@ class RecipeDataset(torch.utils.data.Dataset):
 
         with open(image_map, 'r') as f:
             self.image_map = json.load(f)
+        print(f"Loaded {len(self.image_map)} image mappings from {image_map}")
+        # print("!!! image_map value:", self.image_map['31dee76c25'])
 
         torch.random.manual_seed(self.seed)
         np.random.seed(self.seed)
@@ -84,7 +86,12 @@ class RecipeDataset(torch.utils.data.Dataset):
         id = self.ids[index]
         sample = self.data[id]
 
-        image_ids = self.image_map[id]
+        # print("Indexing with key:", id, "gotten from:", index)
+        try:
+            image_ids = self.image_map[id]
+        except:
+            print(f"Image not found with key: {id}")
+            return None
 
         # randomly pick out an image from the list of images if train, else pick the first image
         if self.partition == 'train':
