@@ -200,6 +200,8 @@ def collate(batch, need_metadata=False):
         titles = []
 
     for elem in batch:
+        if elem is None:
+            continue
         title_embeddings.append(elem['title_embedding'])
 
         ingredient_max_num = max(ingredient_max_num, elem['ingredient_embedding'].shape[0])

@@ -35,7 +35,8 @@ def train_one_epoch(args, encoder, decoder, optimizer, train_loader, batch_tripl
             ingredient_embeddings = batch['ingredient_embeddings'].type(torch.float16).to(device)
             ingredient_indexes = batch['ingredient_indexes'].type(torch.float16).to(device)
             instruction_embeddings = batch['instruction_embeddings'].type(torch.float16).to(device)
-            # here it is still true
+            
+            print(f"ingredients: {ingredient_embeddings.size()}, instructions: {instruction_embeddings.shape}")
 
             image_embeddings = batch['image_embeddings'].type(torch.float16).to(device)
             ingredient_lens = batch['ingredient_lens'].type(torch.int8)
@@ -52,10 +53,9 @@ def train_one_epoch(args, encoder, decoder, optimizer, train_loader, batch_tripl
                 time_mask[:, :t+1] = True
                 time_mask = time_mask.unsqueeze(2).unsqueeze(3).to(device)
                 # get the ingredient embeddings until this timestep
-                ingredient_embeddings_t = ingredient_embeddings * time_mask
 
                 
-                image_output, recipe_output = encoder(image_embeddings, title_embeddings, instruction_embeddings, ingredient_embeddings_t)
+                image_output, recipe_output = encoder(image_embeddings, title_embeddings, instruction_embeddings, ingredient_embeddings * time_mask)
                 batch_loss += batch_triplet_loss(image_output, recipe_output.t())
 
                 # use these to pass through the decoder and get the corresponding outputs
@@ -88,7 +88,7 @@ def train_one_epoch(args, encoder, decoder, optimizer, train_loader, batch_tripl
 
         # --------------------- GARBAGE COLLECTION ---------------------
         
-        del title_embeddings, ingredient_embeddings, ingredient_indexes, instruction_embeddings, image_embeddings, ingredient_lens, mask, loss, outputs, ingredient_embeddings_t, time_mask, batch_loss, label_loss
+        del title_embeddings, ingredient_embeddings, ingredient_indexes, instruction_embeddings, image_embeddings, ingredient_lens, mask, loss, outputs, time_mask, batch_loss, label_loss
         
         gc.collect()
         torch.cuda.empty_cache()
@@ -148,6 +148,12 @@ def train():
 
     encoder = encoder.to(device)
     decoder = decoder.to(device)
+
+    print("MEMORY AFTER MODEL CREATION")
+    print("torch.cuda.memory_allocated: %fGB"%(torch.cuda.memory_allocated(0)/1024/1024/1024))
+    print("torch.cuda.memory_reserved: %fGB"%(torch.cuda.memory_reserved(0)/1024/1024/1024))
+    print("torch.cuda.max_memory_reserved: %fGB"%(torch.cuda.max_memory_reserved(0)/1024/1024/1024))
+    print("------------------------------------------------------------------------------------------------------------")
 
     # create the optimizer
     optimizer = torch.optim.Adam(list(encoder.parameters()) + list(decoder.parameters()), lr=args.lr, weight_decay=args.weight_decay)
